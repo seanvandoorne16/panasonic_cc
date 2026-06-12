@@ -10,7 +10,7 @@ from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from aio_panasonic_comfort_cloud import ApiClient, MFARequiredError, LoginError
+from aio_panasonic_comfort_cloud import ApiClient, MFARequiredError, LoginError, ResponseError
 from . import DOMAIN as PANASONIC_DOMAIN
 from .const import (
     CONF_FORCE_OUTSIDE_SENSOR,
@@ -77,7 +77,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=PANASONIC_DOMAIN):
                 self._username = username
                 self._password = password
                 return await self.async_step_mfa()
-            except LoginError:
+            except (LoginError, ResponseError):
                 errors["base"] = "invalid_user_password"
             except asyncio.TimeoutError:
                 errors["base"] = "device_timeout"
@@ -114,7 +114,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=PANASONIC_DOMAIN):
                 await _validate_credentials(self.hass, self._username, self._password, otp_code)
             except MFARequiredError:
                 errors["base"] = "mfa_failed"
-            except LoginError:
+            except (LoginError, ResponseError):
                 errors["base"] = "invalid_user_password"
             except asyncio.TimeoutError:
                 errors["base"] = "device_timeout"
@@ -169,7 +169,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=PANASONIC_DOMAIN):
                 self._username = username
                 self._password = password
                 return await self.async_step_reconfigure_mfa()
-            except LoginError:
+            except (LoginError, ResponseError):
                 errors["base"] = "invalid_user_password"
             except asyncio.TimeoutError:
                 errors["base"] = "device_timeout"
@@ -206,7 +206,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=PANASONIC_DOMAIN):
                 await _validate_credentials(self.hass, self._username, self._password, otp_code)
             except MFARequiredError:
                 errors["base"] = "mfa_failed"
-            except LoginError:
+            except (LoginError, ResponseError):
                 errors["base"] = "invalid_user_password"
             except asyncio.TimeoutError:
                 errors["base"] = "device_timeout"

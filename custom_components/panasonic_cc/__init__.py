@@ -14,7 +14,7 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_integration
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from aio_panasonic_comfort_cloud import ApiClient, MFARequiredError
+from aio_panasonic_comfort_cloud import ApiClient, MFARequiredError, LoginError, ResponseError
 from aioaquarea import Client as AquareaApiClient, AquareaEnvironment
 
 from .const import (
@@ -94,6 +94,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
             "Two-factor authentication (2FA) is required. "
             "Go to Settings → Devices & Services → Panasonic Comfort Cloud → Reconfigure."
         )
+    except (LoginError, ResponseError) as e:
+        _LOGGER.error("Panasonic authentication failed for %s: %s", username, e)
+        raise ConfigEntryAuthFailed(f"Authentication failed: {e}") from e
     except Exception as e:
         _LOGGER.error("Failed to start Panasonic session: %s", e, exc_info=e)
         return False
