@@ -14,6 +14,13 @@
           "energy_fetch_interval": "Energy fetch interval (seconds)"
         }
       },
+      "mfa": {
+        "title": "Two-Factor Authentication",
+        "description": "Your Panasonic account requires two-factor authentication. Open your authenticator app and enter the current one-time code.",
+        "data": {
+          "otp_code": "One-Time Password (OTP)"
+        }
+      },
       "reconfigure_confirm": {
         "title": "Reconfigure Panasonic Comfort Cloud",
         "description": "Enter your Panasonic ID and password to re-authenticate",
@@ -21,13 +28,21 @@
           "username": "Panasonic ID",
           "password": "Password"
         }
+      },
+      "reconfigure_mfa": {
+        "title": "Two-Factor Authentication Required",
+        "description": "Your Panasonic account requires two-factor authentication. Open your authenticator app and enter the current one-time code.",
+        "data": {
+          "otp_code": "One-Time Password (OTP)"
+        }
       }
     },
     "error":{
       "no_devices": "No devices found. Please check your the account and CFC app and try again.",
       "device_timeout": "Timeout connecting to the API.",
       "device_fail": "Unexpected error connecting to the API.",
-      "invalid_user_password": "Invalid Panasonic ID or password."
+      "invalid_user_password": "Invalid Panasonic ID or password.",
+      "mfa_failed": "Invalid or expired OTP code. Please try again with a fresh code from your authenticator app."
     },
     "abort": {
       "device_timeout": "Timeout connecting to the device.",

@@ -10,7 +10,7 @@ from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from aio_panasonic_comfort_cloud import ApiClient
+from aio_panasonic_comfort_cloud import ApiClient, MFARequiredError
 from . import DOMAIN as PANASONIC_DOMAIN
 from .const import (
     KEY_DOMAIN,
@@ -28,6 +28,8 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+CONF_OTP_CODE = "otp_code"
+
 
 class FlowHandler(config_entries.ConfigFlow, domain=PANASONIC_DOMAIN):
     """Handle a config flow."""
@@ -35,6 +37,8 @@ class FlowHandler(config_entries.ConfigFlow, domain=PANASONIC_DOMAIN):
     VERSION = 1
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
     _entry: config_entries.ConfigEntry | None = None
+    _username: str = ""
+    _password: str = ""
 
     @staticmethod
     @callback
@@ -44,7 +48,6 @@ class FlowHandler(config_entries.ConfigFlow, domain=PANASONIC_DOMAIN):
 
     async def _create_entry(self, username, password):
         """Register new entry."""
-        # Check if ip already is registered
         for entry in self._async_current_entries():
             if entry.data[KEY_DOMAIN] == PANASONIC_DOMAIN:
                 return self.async_abort(reason="already_configured")
@@ -60,25 +63,38 @@ class FlowHandler(config_entries.ConfigFlow, domain=PANASONIC_DOMAIN):
             CONF_ENERGY_FETCH_INTERVAL: DEFAULT_ENERGY_FETCH_INTERVAL,
         })
 
+    async def _try_login(self, username: str, password: str, otp_code: str | None = None):
+        """Attempt login and return (success, error_dict).
+
+        Returns ({}, None) on success, or (errors_dict, None) on failure.
+        Raises MFARequiredError if 2FA is needed and no otp_code was given.
+        """
+        client = async_get_clientsession(self.hass)
+        api = ApiClient(username, password, client)
+        await api.start_session(otp_code=otp_code)
+        devices = api.get_devices()
+        if not devices and not api.unknown_devices:
+            return {"base": "no_devices"}
+        return {}
+
     async def _create_device(self, username, password):
         """Create device."""
         try:
-            client = async_get_clientsession(self.hass)
-            api = ApiClient(username, password, client)
-            await api.start_session()
-            devices = api.get_devices()
-
-            if not devices and not api.unknown_devices:
-                _LOGGER.debug("No devices found")
-                return self.async_abort(reason="No devices")
-
+            errors = await self._try_login(username, password)
+            if errors:
+                return self.async_abort(reason="no_devices")
+        except MFARequiredError:
+            _LOGGER.debug("MFA required for %s, showing OTP step", username)
+            self._username = username
+            self._password = password
+            return await self.async_step_mfa()
         except asyncio.TimeoutError as te:
             _LOGGER.exception("TimeoutError", te)
             return self.async_abort(reason="device_timeout")
         except ClientError as ce:
             _LOGGER.exception("ClientError", ce)
             return self.async_abort(reason="device_fail")
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             _LOGGER.exception("Unexpected error creating device", e)
             return self.async_abort(reason="device_fail")
 
@@ -86,12 +102,11 @@ class FlowHandler(config_entries.ConfigFlow, domain=PANASONIC_DOMAIN):
 
     async def async_step_user(self, user_input=None):
         """User initiated config flow."""
-        
         if user_input is None:
             return self.async_show_form(
                 step_id="user", data_schema=vol.Schema({
                     vol.Required(CONF_USERNAME): str,
-                    vol.Required(CONF_PASSWORD): str,                    
+                    vol.Required(CONF_PASSWORD): str,
                     vol.Optional(
                         CONF_ENABLE_DAILY_ENERGY_SENSOR,
                         default=DEFAULT_ENABLE_DAILY_ENERGY_SENSOR,
@@ -116,13 +131,45 @@ class FlowHandler(config_entries.ConfigFlow, domain=PANASONIC_DOMAIN):
             )
         return await self._create_device(user_input[CONF_USERNAME], user_input[CONF_PASSWORD])
 
+    async def async_step_mfa(self, user_input=None):
+        """Handle 2FA/MFA OTP step during initial setup."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            otp_code = user_input.get(CONF_OTP_CODE, "").strip()
+            try:
+                errors = await self._try_login(self._username, self._password, otp_code)
+                if not errors:
+                    return await self._create_entry(self._username, self._password)
+            except MFARequiredError:
+                errors["base"] = "mfa_failed"
+            except asyncio.TimeoutError:
+                errors["base"] = "device_timeout"
+            except ClientError:
+                errors["base"] = "device_fail"
+            except Exception as e:
+                err_msg = str(e)
+                if "invalid_user_password" in err_msg:
+                    errors["base"] = "invalid_user_password"
+                else:
+                    _LOGGER.exception("Unexpected MFA error", e)
+                    errors["base"] = "mfa_failed"
+
+        return self.async_show_form(
+            step_id="mfa",
+            data_schema=vol.Schema({
+                vol.Required(CONF_OTP_CODE): str,
+            }),
+            errors=errors,
+        )
+
     async def async_step_import(self, user_input):
         """Import a config entry."""
         username = user_input.get(CONF_USERNAME)
         if not username:
             return await self.async_step_user()
         return await self._create_device(username, user_input[CONF_PASSWORD])
-    
+
     async def async_step_reconfigure(
         self, entry_data: Mapping[str, Any]
     ) -> config_entries.ConfigFlowResult:
@@ -130,57 +177,95 @@ class FlowHandler(config_entries.ConfigFlow, domain=PANASONIC_DOMAIN):
         self._entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         return await self.async_step_reconfigure_confirm()
 
-    async def async_auth(self, user_input: Mapping[str, Any]) -> dict[str, str]:
-        """Reusable Auth Helper."""
-        client = async_get_clientsession(self.hass)
-        username = user_input[CONF_USERNAME]
-        password = user_input[CONF_PASSWORD]
-        api = ApiClient(username, password, client)
-        try:
-            await api.reauthenticate()
-            devices = api.get_devices()
-
-            if not devices and not api.unknown_devices:
-                return {"base": "no_devices"}
-        except asyncio.TimeoutError as te:
-            _LOGGER.exception("TimeoutError", te)
-            return {"base": "device_timeout"}
-        except ClientError as ce:
-            _LOGGER.exception("ClientError", ce)
-            return {"base": "device_fail"}
-        except Exception as e:  # pylint: disable=broad-except
-            err_msg = str(e)
-            if "invalid_user_password" in err_msg:
-                return {"base": "invalid_user_password"}
-            _LOGGER.exception("Unexpected error creating device", e)
-            return {"base": "device_fail"}
-
-
-        return {}
-
     async def async_step_reconfigure_confirm(
         self, user_input: Mapping[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Handle users reauth credentials."""
-
         assert self._entry
         errors: dict[str, str] = {}
 
-        if user_input and not (errors := await self.async_auth(user_input)):
-            return self.async_update_reload_and_abort(
-                self._entry,
-                data=user_input,
-            )
+        if user_input is not None:
+            username = user_input[CONF_USERNAME]
+            password = user_input[CONF_PASSWORD]
+            try:
+                client = async_get_clientsession(self.hass)
+                api = ApiClient(username, password, client)
+                await api.reauthenticate()
+                devices = api.get_devices()
+                if not devices and not api.unknown_devices:
+                    errors["base"] = "no_devices"
+                else:
+                    return self.async_update_reload_and_abort(
+                        self._entry,
+                        data=user_input,
+                    )
+            except MFARequiredError:
+                _LOGGER.debug("MFA required during reconfigure for %s", username)
+                self._username = username
+                self._password = password
+                return await self.async_step_reconfigure_mfa()
+            except asyncio.TimeoutError:
+                errors["base"] = "device_timeout"
+            except ClientError:
+                errors["base"] = "device_fail"
+            except Exception as e:
+                err_msg = str(e)
+                if "invalid_user_password" in err_msg:
+                    errors["base"] = "invalid_user_password"
+                else:
+                    _LOGGER.exception("Unexpected reconfigure error", e)
+                    errors["base"] = "device_fail"
 
         return self.async_show_form(
             step_id="reconfigure_confirm",
             data_schema=vol.Schema({
                 vol.Required(CONF_USERNAME): str,
                 vol.Required(CONF_PASSWORD): str,
-                }),
+            }),
             errors=errors,
         )
 
+    async def async_step_reconfigure_mfa(
+        self, user_input: Mapping[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle 2FA/MFA OTP step during reconfigure."""
+        assert self._entry
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            otp_code = user_input.get(CONF_OTP_CODE, "").strip()
+            try:
+                client = async_get_clientsession(self.hass)
+                api = ApiClient(self._username, self._password, client)
+                await api.start_session(otp_code=otp_code)
+                devices = api.get_devices()
+                if not devices and not api.unknown_devices:
+                    errors["base"] = "no_devices"
+                else:
+                    return self.async_update_reload_and_abort(
+                        self._entry,
+                        data={
+                            CONF_USERNAME: self._username,
+                            CONF_PASSWORD: self._password,
+                        },
+                    )
+            except MFARequiredError:
+                errors["base"] = "mfa_failed"
+            except asyncio.TimeoutError:
+                errors["base"] = "device_timeout"
+            except ClientError:
+                errors["base"] = "device_fail"
+            except Exception as e:
+                _LOGGER.exception("Unexpected reconfigure MFA error", e)
+                errors["base"] = "mfa_failed"
+
+        return self.async_show_form(
+            step_id="reconfigure_mfa",
+            data_schema=vol.Schema({
+                vol.Required(CONF_OTP_CODE): str,
+            }),
+            errors=errors,
+        )
 
 
 class PanasonicOptionsFlowHandler(config_entries.OptionsFlow):

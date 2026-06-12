@@ -13,7 +13,8 @@ from homeassistant.const import (
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_integration
-from aio_panasonic_comfort_cloud import ApiClient
+from homeassistant.exceptions import ConfigEntryAuthFailed
+from aio_panasonic_comfort_cloud import ApiClient, MFARequiredError
 from aioaquarea import Client as AquareaApiClient, AquareaEnvironment
 
 from .const import (
@@ -70,7 +71,6 @@ async def async_setup(hass: HomeAssistant, config: Dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Establish connection with Comfort Cloud."""
-    
 
     conf = entry.data
     if PANASONIC_DEVICES not in hass.data:
@@ -79,25 +79,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     username = conf[CONF_USERNAME]
     password = conf[CONF_PASSWORD]
     enable_daily_energy_sensor = entry.options.get(CONF_ENABLE_DAILY_ENERGY_SENSOR, DEFAULT_ENABLE_DAILY_ENERGY_SENSOR)
-    
+
     client = async_get_clientsession(hass)
     api = ApiClient(username, password, client)
-    await api.start_session()
+    try:
+        await api.start_session()
+    except MFARequiredError:
+        _LOGGER.warning(
+            "Two-factor authentication required for Panasonic account %s. "
+            "Please reconfigure the integration to enter your OTP code.",
+            username
+        )
+        raise ConfigEntryAuthFailed(
+            "Two-factor authentication (2FA) is required. "
+            "Go to Settings → Devices & Services → Panasonic Comfort Cloud → Reconfigure."
+        )
+    except Exception as e:
+        _LOGGER.error("Failed to start Panasonic session: %s", e, exc_info=e)
+        return False
+
     devices = api.get_devices()
-    
+
     if CONF_UPDATE_INTERVAL_VERSION not in conf or conf[CONF_UPDATE_INTERVAL_VERSION] < 2:
         _LOGGER.info("Updating configuration")
         updated_config = dict(entry.data)
         updated_config[CONF_UPDATE_INTERVAL_VERSION] = 2
         if CONF_DEVICE_FETCH_INTERVAL not in conf or conf[CONF_DEVICE_FETCH_INTERVAL] <= 31:
             updated_config[CONF_DEVICE_FETCH_INTERVAL] = DEFAULT_DEVICE_FETCH_INTERVAL
-            _LOGGER.info(f"Setting default fetch interval to {DEFAULT_DEVICE_FETCH_INTERVAL}")        
+            _LOGGER.info(f"Setting default fetch interval to {DEFAULT_DEVICE_FETCH_INTERVAL}")
         if CONF_ENERGY_FETCH_INTERVAL not in conf or conf[CONF_ENERGY_FETCH_INTERVAL] <= 61:
             updated_config[CONF_ENERGY_FETCH_INTERVAL] = DEFAULT_ENERGY_FETCH_INTERVAL
             _LOGGER.info(f"Setting default energy fetch interval to {DEFAULT_ENERGY_FETCH_INTERVAL}")
         hass.config_entries.async_update_entry(entry, data=updated_config)
 
-   
     if len(devices) == 0 and not api.has_unknown_devices:
         _LOGGER.error("Could not find any Panasonic Comfort Cloud Heat Pumps")
         return False
@@ -120,7 +134,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     if api.has_unknown_devices or AQUAREA_DEMO:
         try:
-            
             if not AQUAREA_DEMO:
                 aquarea_api_client = AquareaApiClient(client, username, password)
                 await aquarea_api_client.login()
