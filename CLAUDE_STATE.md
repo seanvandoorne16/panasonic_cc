@@ -1,6 +1,6 @@
 # CLAUDE_STATE.md — Persistent Session Memory
 
-## Status: IMPLEMENTATION IN PROGRESS
+## Status: COMMITTED — READY FOR HA TESTING
 
 ---
 
@@ -10,7 +10,7 @@ A Home Assistant custom component (HACS) for Panasonic Comfort Cloud (AC + Aquar
 - Repo: https://github.com/seanvandoorne16/panasonic_cc (fork of sockless-coding/panasonic_cc)
 - Language: Python
 - HA integration, not a standalone app
-- Depends on: `aio-panasonic-comfort-cloud==2025.5.1`, `aioaquarea==0.7.2`
+- Depends on: `aio-panasonic-comfort-cloud==2026.6.1`, `aioaquarea==0.7.2`
 
 ---
 
@@ -109,6 +109,12 @@ The library `aio_panasonic_comfort_cloud` DOES support MFA:
 
 ---
 
+## Git State
+
+- Commit 1 (`75e590f`): fix: add 2FA/MFA support to config flow and runtime auth handling
+- Commit 2 (`c46c747`): fix: use start_session() in reconfigure flow; bump library to 2026.6.1
+- Branch: master, NOT yet pushed to remote (user must authorize push)
+
 ## Last Updated
 
-2026-06-12 — Initial implementation session
+2026-06-12 — Session 2: committed both fixes, verified library attributes
