@@ -190,7 +190,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=PANASONIC_DOMAIN):
             try:
                 client = async_get_clientsession(self.hass)
                 api = ApiClient(username, password, client)
-                await api.reauthenticate()
+                await api.start_session()
                 devices = api.get_devices()
                 if not devices and not api.unknown_devices:
                     errors["base"] = "no_devices"
