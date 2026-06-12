@@ -1,6 +1,6 @@
 # CLAUDE_STATE.md — Persistent Session Memory
 
-## Status: COMMITTED — READY FOR HA TESTING
+## Status: GEPUSHT — NOG NIET GETEST IN HOME ASSISTANT
 
 ---
 
