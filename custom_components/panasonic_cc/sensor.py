@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
 
 from aio_panasonic_comfort_cloud import PanasonicDevice, PanasonicDeviceEnergy, PanasonicDeviceZone, constants
 from aioaquarea import Device as AquareaDevice
+from aioaquarea.data import DeviceZone as AquareaDeviceZone
 
 from .const import (
     DOMAIN,
@@ -175,6 +176,68 @@ AQUAREA_OUTSIDE_TEMPERATURE_DESCRIPTION = AquareaSensorEntityDescription(
     is_available=lambda device: device.temperature_outdoor is not None,
 )
 
+AQUAREA_CURRENT_ACTION_DESCRIPTION = AquareaSensorEntityDescription(
+    key="current_action",
+    translation_key="current_action",
+    name="Current Action",
+    icon="mdi:heat-pump",
+    device_class=None,
+    state_class=None,
+    native_unit_of_measurement=None,
+    get_state=lambda device: device.current_action.name.lower(),
+    is_available=lambda device: True,
+)
+
+AQUAREA_PUMP_DUTY_DESCRIPTION = AquareaSensorEntityDescription(
+    key="pump_duty",
+    translation_key="pump_duty",
+    name="Pump Duty",
+    icon="mdi:gauge",
+    device_class=None,
+    state_class=SensorStateClass.MEASUREMENT,
+    native_unit_of_measurement="%",
+    get_state=lambda device: device.pump_duty,
+    is_available=lambda device: device.pump_duty is not None,
+)
+
+AQUAREA_TANK_TEMPERATURE_DESCRIPTION = AquareaSensorEntityDescription(
+    key="tank_temperature",
+    translation_key="tank_temperature",
+    name="Tank Temperature",
+    icon="mdi:water-thermometer",
+    device_class=SensorDeviceClass.TEMPERATURE,
+    state_class=SensorStateClass.MEASUREMENT,
+    native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+    get_state=lambda device: device.tank.temperature if device.tank else None,
+    is_available=lambda device: device.tank is not None and device.tank.temperature is not None,
+)
+
+AQUAREA_TANK_TARGET_TEMPERATURE_DESCRIPTION = AquareaSensorEntityDescription(
+    key="tank_target_temperature",
+    translation_key="tank_target_temperature",
+    name="Tank Target Temperature",
+    icon="mdi:water-thermometer-outline",
+    device_class=SensorDeviceClass.TEMPERATURE,
+    state_class=SensorStateClass.MEASUREMENT,
+    native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+    get_state=lambda device: device.tank.target_temperature if device.tank else None,
+    is_available=lambda device: device.tank is not None,
+)
+
+
+def create_aquarea_zone_temperature_description(zone_id: int, zone_name: str) -> AquareaSensorEntityDescription:
+    return AquareaSensorEntityDescription(
+        key=f"aquarea-zone-{zone_id}-temperature",
+        translation_key="aquarea_zone_temperature",
+        name=f"{zone_name} Temperature",
+        icon="mdi:thermometer",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        get_state=lambda device, zid=zone_id: device.zones[zid].temperature if zid in device.zones else None,
+        is_available=lambda device, zid=zone_id: zid in device.zones and device.zones[zid].temperature is not None,
+    )
+
 def create_zone_temperature_description(zone: PanasonicDeviceZone):
     return PanasonicSensorEntityDescription(
         key = f"zone-{zone.id}-temperature",
@@ -217,6 +280,16 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     for coordinator in aquarea_coordinators:
         entities.append(AquareaSensorEntity(coordinator, AQUAREA_OUTSIDE_TEMPERATURE_DESCRIPTION))
+        entities.append(AquareaSensorEntity(coordinator, AQUAREA_CURRENT_ACTION_DESCRIPTION))
+        entities.append(AquareaSensorEntity(coordinator, AQUAREA_PUMP_DUTY_DESCRIPTION))
+        if coordinator.device.tank is not None:
+            entities.append(AquareaSensorEntity(coordinator, AQUAREA_TANK_TEMPERATURE_DESCRIPTION))
+            entities.append(AquareaSensorEntity(coordinator, AQUAREA_TANK_TARGET_TEMPERATURE_DESCRIPTION))
+        for zone_id, zone in coordinator.device.zones.items():
+            entities.append(AquareaSensorEntity(
+                coordinator,
+                create_aquarea_zone_temperature_description(zone_id, zone.name)
+            ))
 
     async_add_entities(entities)
 

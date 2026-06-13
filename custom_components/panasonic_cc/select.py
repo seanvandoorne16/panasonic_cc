@@ -1,14 +1,16 @@
-from typing import Callable
+from typing import Callable, Awaitable
 from dataclasses import dataclass
 
 from homeassistant.core import HomeAssistant
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 
-from .const import DOMAIN, DATA_COORDINATORS, SELECT_HORIZONTAL_SWING, SELECT_VERTICAL_SWING
+from .const import DOMAIN, DATA_COORDINATORS, SELECT_HORIZONTAL_SWING, SELECT_VERTICAL_SWING, AQUAREA_COORDINATORS
 from aio_panasonic_comfort_cloud import PanasonicDevice, ChangeRequestBuilder, constants
+from aioaquarea import Device as AquareaDevice
+from aioaquarea.data import QuietMode
 
-from .coordinator import PanasonicDeviceCoordinator
-from .base import PanasonicDataEntity
+from .coordinator import PanasonicDeviceCoordinator, AquareaDeviceCoordinator
+from .base import PanasonicDataEntity, AquareaDataEntity
 
 @dataclass(frozen=True, kw_only=True)
 class PanasonicSelectEntityDescription(SelectEntityDescription):
@@ -41,13 +43,34 @@ VERTICAL_SWING_DESCRIPTION = PanasonicSelectEntityDescription(
 )
 
 
+@dataclass(frozen=True, kw_only=True)
+class AquareaSelectEntityDescription(SelectEntityDescription):
+    """Description of an Aquarea select entity."""
+    options: list[str] = None
+    get_current_option: Callable[[AquareaDevice], str] = None
+    set_option: Callable[[AquareaDevice, str], Awaitable] = None
+
+
+AQUAREA_QUIET_MODE_DESCRIPTION = AquareaSelectEntityDescription(
+    key="quiet_mode",
+    name="Quiet Mode",
+    icon="mdi:volume-off",
+    options=[q.name.lower() for q in QuietMode],
+    get_current_option=lambda device: device.quiet_mode.name.lower() if device.quiet_mode is not None else QuietMode.OFF.name.lower(),
+    set_option=lambda device, option: device.set_quiet_mode(QuietMode[option.upper()]),
+)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     entities = []
     data_coordinators: list[PanasonicDeviceCoordinator] = hass.data[DOMAIN][DATA_COORDINATORS]
+    aquarea_coordinators: list[AquareaDeviceCoordinator] = hass.data[DOMAIN][AQUAREA_COORDINATORS]
     for coordinator in data_coordinators:
         entities.append(PanasonicSelectEntity(coordinator, HORIZONTAL_SWING_DESCRIPTION))
         entities.append(PanasonicSelectEntity(coordinator, VERTICAL_SWING_DESCRIPTION))
-        
+    for coordinator in aquarea_coordinators:
+        entities.append(AquareaSelectEntity(coordinator, AQUAREA_QUIET_MODE_DESCRIPTION))
+
     async_add_entities(entities)
 
 class PanasonicSelectEntityBase(SelectEntity):
@@ -76,4 +99,24 @@ class PanasonicSelectEntity(PanasonicDataEntity, PanasonicSelectEntityBase):
 
     def _async_update_attrs(self) -> None:
         self.current_option = self.entity_description.get_current_option(self.coordinator.device)
+
+
+class AquareaSelectEntity(AquareaDataEntity, SelectEntity):
+    """Aquarea select entity (e.g. quiet mode)."""
+
+    entity_description: AquareaSelectEntityDescription
+
+    def __init__(self, coordinator: AquareaDeviceCoordinator, description: AquareaSelectEntityDescription):
+        self.entity_description = description
+        self._attr_options = description.options
+        super().__init__(coordinator, description.key)
+
+    def _async_update_attrs(self) -> None:
+        self._attr_current_option = self.entity_description.get_current_option(self.coordinator.device)
+
+    async def async_select_option(self, option: str) -> None:
+        await self.entity_description.set_option(self.coordinator.device, option)
+        self._attr_current_option = option
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
 

@@ -498,9 +498,10 @@ class AquareaClimateEntity(AquareaDataEntity, ClimateEntity):
         device = self.coordinator.device
         zone = device.zones.get(self.entity_description.zone_id)
         if mode := kwargs.get(ATTR_HVAC_MODE):
-            await self.set_hvac_mode(mode)
-        if temp := kwargs.get(ATTR_TEMPERATURE) and zone.supports_set_temperature:
+            await self.async_set_hvac_mode(mode)
+        if (temp := kwargs.get(ATTR_TEMPERATURE)) and zone.supports_set_temperature:
             await self.coordinator.device.set_temperature(int(temp), zone.zone_id)
+            await self.coordinator.async_request_refresh()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
