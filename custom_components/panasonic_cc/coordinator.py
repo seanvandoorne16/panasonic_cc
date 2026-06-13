@@ -188,8 +188,8 @@ class AquareaDeviceCoordinator(DataUpdateCoordinator):
             identifiers={(DOMAIN, self.device_id)},
             manufacturer=self.device.manufacturer,
             model="",
-            name=self.device.name,
-            sw_version=self.device.version,
+            name=self.device.device_name,
+            sw_version=self.device.firmware_version,
         )
 
     async def _fetch_device_data(self)->int:

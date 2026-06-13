@@ -144,7 +144,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
                 aquarea_api_client = AquareaApiClient(client, environment=AquareaEnvironment.DEMO)
                 aquarea_api_client._access_token = 'dummy'
                 aquarea_api_client._token_expiration = None
-            aquarea_devices = await aquarea_api_client.get_devices(include_long_id=True)
+            aquarea_devices = await aquarea_api_client.get_devices()
             for aquarea_device in aquarea_devices:
                 try:
                     aquarea_device_coordinator = AquareaDeviceCoordinator(hass, conf, aquarea_api_client, aquarea_device)
