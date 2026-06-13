@@ -496,3 +496,4 @@ class AquareaClimateEntity(AquareaDataEntity, ClimateEntity):
         if not (op_mode := convert_hvac_mode_to_aquarea_operation_mode(hvac_mode)):
             raise ValueError(f"Invalid hvac mode {hvac_mode}")
         await self.coordinator.device.set_mode(op_mode, self.entity_description.zone_id)
+        await self.coordinator.async_request_refresh()
