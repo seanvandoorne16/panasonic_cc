@@ -2,78 +2,93 @@
 
 [![GitHub Release][releases-shield]][releases]
 [![License][license-shield]](LICENSE)
-[![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
-[![Integration Usage](https://img.shields.io/badge/dynamic/json?color=41BDF5&style=for-the-badge&logo=home-assistant&label=usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.panasonic_cc.total)](https://analytics.home-assistant.io/)
 
-This is a custom component to allow control of Panasonic Comfort Cloud devices in [HomeAssistant](https://home-assistant.io).
+> **This is a community fork of [sockless-coding/panasonic_cc](https://github.com/sockless-coding/panasonic_cc)** with fixes for broken authentication, updated library versions, and expanded Aquarea heat pump support.
 
-> [!IMPORTANT]
-> Before installing this integration, please ensure the following steps have been completed in the Panasonic Comfort Cloud App:
->
-> - **Set Up Two-Factor Authentication (2FA):** Complete the entire 2FA setup process.  
-> - **Select the SMS Option:** It is crucial to choose the SMS option for 2FA. Failing to do so will result in the error “Missing required parameter: code.”  
->
-> For optimal operation, it is also recommended that you use separate accounts for Home Assistant and the Comfort Cloud App.
+## What's fixed / added in this fork
 
-<p>
-    <img src="https://github.com/sockless-coding/panasonic_cc/raw/master/doc/controls.png" alt="Example controls" style="vertical-align: top;max-width:100%" align="top" />
-    <img src="https://github.com/sockless-coding/panasonic_cc/raw/master/doc/sensors.png" alt="Example sensors" style="vertical-align: top;max-width:100%" align="top" />
-    <img src="https://github.com/sockless-coding/panasonic_cc/raw/master/doc/diagnostics.png" alt="Example diagnostics" style="vertical-align: top;max-width:100%" align="top" />
-</p>
+### Authentication
+- **MFA/2FA fully working** — the integration now handles the two-step OTP flow correctly
+- Fixed crash on wrong password (`LoginError` / `ResponseError` now show a proper error in the form instead of aborting)
+- Fixed `OptionsFlow` crash on newer Home Assistant versions
 
+### Aquarea heat pump (aioaquarea 1.0.7)
+- Updated to `aioaquarea==1.0.7` which uses the new Panasonic endpoint (`accsmart.panasonic.com` — the old `aquarea-smart.panasonic.com` is dead)
+- Fixed breaking API changes: `device_name`, `firmware_version`, `get_devices()`
+- **Fixed zone temperature control** — the slider now works correctly regardless of device/zone power state
 
+#### New Aquarea entities
+**Sensors**
+- Outside temperature
+- Current action (heating / cooling / idle)
+- Pump duty (%)
+- Zone temperatures (one per zone, e.g. Vloer, Radiator)
+- Tank temperature + tank target temperature
+- Heating energy today (kWh)
+- Hot water energy today (kWh)
+- Total energy today (kWh)
 
-## Features
+**Diagnostic sensors**
+- Operation status (ON / OFF / UNKNOWN)
+- Device mode (NORMAL / DEFROST)
+- Error code + error message
+- Force hot water status
+- Force heater status
 
-* Climate component for Panasonic airconditioners and heatpumps
-* Horizontal swing mode selection
-* Sensors for inside and outside temperature (where available)
-* Switch for toggling Nanoe mode (where available)
-* Switch for toggling ECONAVI mode (where available)
-* Switch for toggling AI ECO mode (where available)
-* Daily energy sensor (optional)
-* Current Power sensor (Calculated from energy reading)
-* Zone controls (where available)
+**Climate entities** (one per zone)
+- On / Off
+- Temperature target (where supported by zone)
+- HVAC mode (heat / cool / heat_cool)
 
-## Installation
+**Buttons**
+- Force Hot Water
+- Force Heater
+- Request Defrost
 
-### HACS (recommended)
-1. [Install HACS](https://hacs.xyz/docs/setup/download), if you did not already
-2. [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=sockless-coding&repository=panasonic_cc&category=integration)
-3. Press the Download button
-4. Restart Home Assistant
-5. [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=panasonic_cc)
+**Select**
+- Quiet Mode (off / level 1 / level 2 / level 3)
 
-### Install manually
-Clone or copy this repository and copy the folder 'custom_components/panasonic_cc' into '<homeassistant config>/custom_components/panasonic_cc'
+---
+
+## Installation via HACS (manual repository)
+
+1. In HACS → go to **Integrations** → 3-dot menu → **Custom repositories**
+2. Add `https://github.com/seanvandoorne16/panasonic_cc` as type **Integration**
+3. Download the integration and restart Home Assistant
+4. Add the integration via **Settings → Integrations → Add Integration → Panasonic Comfort Cloud**
 
 ## Configuration
 
-Once installed, the Panasonic Comfort Cloud integration can be configured via the Home Assistant integration interface where it will let you enter your Panasonic ID and Password.
+Enter your Panasonic ID and password. If your account has 2FA enabled, you will be prompted for the OTP code.
 
-![Setup](https://github.com/sockless-coding/panasonic_cc/raw/master/doc/setup.png)
+Options available after setup:
+- Enable/disable daily energy sensor
+- Force enable Nanoe
+- Use Panasonic preset names
+- Device fetch interval (default: 120 seconds)
+- Energy fetch interval (default: 300 seconds)
 
-After inital setup, the following options are available:
+## Original features (Panasonic CC airconditioners)
 
-![Setup](https://github.com/sockless-coding/panasonic_cc/raw/master/doc/configuration.png)
-
-## Known issues
-
-- The authentication process can be fiddly and may require resetting the MFA by logging in / out from the Panasonic app.
+* Climate control (on/off, mode, temperature, fan speed, swing)
+* Horizontal and vertical swing mode selection
+* Inside and outside temperature sensors
+* Nanoe / ECONAVI / AI ECO switches (where available)
+* Daily energy sensor (optional)
+* Current power sensor
+* Zone controls (where available)
 
 ## Dependencies
 
-This integration uses the following modules:
+- [`aio-panasonic-comfort-cloud==2026.6.1`](https://github.com/sockless-coding/aio-panasonic-comfort-cloud)
+- [`aioaquarea==1.0.7`](https://github.com/cjaliaga/aioaquarea)
 
-- [`aio-panasonic-comfort-cloud`](https://github.com/sockless-coding/aio-panasonic-comfort-cloud): For Panasonic Heatpumps.
-- [`aioaquarea`](https://github.com/cjaliaga/aioaquarea): For Panasonic Aquarea devices.
+## Known issues / limitations
 
+- Tank water pressure is not available in the Panasonic API
+- Energy sensors may show as unavailable until the first data fetch completes
+- Force Heater / Force Hot Water buttons directly control hardware — use with care
 
-
-
-## Support Development
-- :coffee:&nbsp;&nbsp;[Buy me a coffee](https://www.buymeacoffee.com/sockless)
-
-[license-shield]: https://img.shields.io/github/license/sockless-coding/panasonic_cc.svg?style=for-the-badge
-[releases-shield]: https://img.shields.io/github/release/sockless-coding/panasonic_cc.svg?style=for-the-badge
-[releases]: https://github.com/sockless-coding/panasonic_cc/releases
+[license-shield]: https://img.shields.io/github/license/seanvandoorne16/panasonic_cc.svg?style=for-the-badge
+[releases-shield]: https://img.shields.io/github/release/seanvandoorne16/panasonic_cc.svg?style=for-the-badge
+[releases]: https://github.com/seanvandoorne16/panasonic_cc/releases
