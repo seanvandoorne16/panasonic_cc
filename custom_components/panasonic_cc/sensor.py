@@ -10,9 +10,12 @@ from homeassistant.components.sensor import (
     SensorEntityDescription
 )
 
+from datetime import datetime
 from aio_panasonic_comfort_cloud import PanasonicDevice, PanasonicDeviceEnergy, PanasonicDeviceZone, constants
 from aioaquarea import Device as AquareaDevice
 from aioaquarea.data import DeviceZone as AquareaDeviceZone
+from aioaquarea import ConsumptionType
+from aioaquarea.errors import DataNotAvailableError
 
 from .const import (
     DOMAIN,
@@ -225,6 +228,49 @@ AQUAREA_TANK_TARGET_TEMPERATURE_DESCRIPTION = AquareaSensorEntityDescription(
 )
 
 
+def _get_consumption(device: AquareaDevice, consumption_type: ConsumptionType) -> float | None:
+    try:
+        return device.get_or_schedule_consumption(datetime.now(), consumption_type)
+    except (DataNotAvailableError, Exception):
+        return None
+
+AQUAREA_ENERGY_HEAT_DESCRIPTION = AquareaSensorEntityDescription(
+    key="energy_heat",
+    translation_key="energy_heat",
+    name="Heating Energy Today",
+    icon="mdi:radiator",
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    native_unit_of_measurement="kWh",
+    get_state=lambda device: _get_consumption(device, ConsumptionType.HEAT),
+    is_available=lambda device: _get_consumption(device, ConsumptionType.HEAT) is not None,
+)
+
+AQUAREA_ENERGY_TANK_DESCRIPTION = AquareaSensorEntityDescription(
+    key="energy_tank",
+    translation_key="energy_tank",
+    name="Hot Water Energy Today",
+    icon="mdi:water-boiler",
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    native_unit_of_measurement="kWh",
+    get_state=lambda device: _get_consumption(device, ConsumptionType.WATER_TANK),
+    is_available=lambda device: _get_consumption(device, ConsumptionType.WATER_TANK) is not None,
+)
+
+AQUAREA_ENERGY_TOTAL_DESCRIPTION = AquareaSensorEntityDescription(
+    key="energy_total",
+    translation_key="energy_total",
+    name="Total Energy Today",
+    icon="mdi:lightning-bolt",
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    native_unit_of_measurement="kWh",
+    get_state=lambda device: _get_consumption(device, ConsumptionType.TOTAL),
+    is_available=lambda device: _get_consumption(device, ConsumptionType.TOTAL) is not None,
+)
+
+
 def create_aquarea_zone_temperature_description(zone_id: int, zone_name: str) -> AquareaSensorEntityDescription:
     return AquareaSensorEntityDescription(
         key=f"aquarea-zone-{zone_id}-temperature",
@@ -282,6 +328,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
         entities.append(AquareaSensorEntity(coordinator, AQUAREA_OUTSIDE_TEMPERATURE_DESCRIPTION))
         entities.append(AquareaSensorEntity(coordinator, AQUAREA_CURRENT_ACTION_DESCRIPTION))
         entities.append(AquareaSensorEntity(coordinator, AQUAREA_PUMP_DUTY_DESCRIPTION))
+        entities.append(AquareaSensorEntity(coordinator, AQUAREA_ENERGY_HEAT_DESCRIPTION))
+        entities.append(AquareaSensorEntity(coordinator, AQUAREA_ENERGY_TANK_DESCRIPTION))
+        entities.append(AquareaSensorEntity(coordinator, AQUAREA_ENERGY_TOTAL_DESCRIPTION))
         if coordinator.device.tank is not None:
             entities.append(AquareaSensorEntity(coordinator, AQUAREA_TANK_TEMPERATURE_DESCRIPTION))
             entities.append(AquareaSensorEntity(coordinator, AQUAREA_TANK_TARGET_TEMPERATURE_DESCRIPTION))
