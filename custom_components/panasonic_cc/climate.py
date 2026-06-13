@@ -455,31 +455,16 @@ class AquareaClimateEntity(AquareaDataEntity, ClimateEntity):
         self._attr_hvac_action = convert_aquarea_action_to_hvac_action(device.current_action)
         self._attr_current_temperature = zone.temperature
 
-        self._attr_max_temp = zone.temperature
-        self._attr_min_temp = zone.temperature
-
-        if zone.supports_set_temperature and device.mode != AquareaExtendedOperationMode.OFF:
-            self._attr_max_temp = (
-                zone.cool_max
-                if device.mode
-                in (AquareaExtendedOperationMode.COOL, AquareaExtendedOperationMode.AUTO_COOL)
-                else zone.heat_max
-            )
-            self._attr_min_temp = (
-                zone.cool_min
-                if device.mode
-                in (AquareaExtendedOperationMode.COOL, AquareaExtendedOperationMode.AUTO_COOL)
-                else zone.heat_min
-            )
-            self._attr_target_temperature = (
-                zone.cool_target_temperature
-                if device.mode
-                in (
-                    AquareaExtendedOperationMode.COOL,
-                    AquareaExtendedOperationMode.AUTO_COOL,
-                )
-                else zone.heat_target_temperature
-            )
+        if zone.supports_set_temperature:
+            in_cool = device.mode in (AquareaExtendedOperationMode.COOL, AquareaExtendedOperationMode.AUTO_COOL)
+            self._attr_max_temp = zone.cool_max if in_cool else zone.heat_max
+            self._attr_min_temp = zone.cool_min if in_cool else zone.heat_min
+            self._attr_target_temperature = zone.cool_target_temperature if in_cool else zone.heat_target_temperature
+            self._attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
+        else:
+            self._attr_max_temp = zone.temperature
+            self._attr_min_temp = zone.temperature
+            self._attr_supported_features = ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
 
     async def async_turn_on(self) -> None:
         """Set the climate state to on."""
