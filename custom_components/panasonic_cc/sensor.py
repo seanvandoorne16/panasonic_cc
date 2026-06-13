@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
 from datetime import datetime
 from aio_panasonic_comfort_cloud import PanasonicDevice, PanasonicDeviceEnergy, PanasonicDeviceZone, constants
 from aioaquarea import Device as AquareaDevice
-from aioaquarea.data import DeviceZone as AquareaDeviceZone
+from aioaquarea.data import DeviceZone as AquareaDeviceZone, ForceDHW, ForceHeater, DeviceModeStatus, OperationStatus
 from aioaquarea import ConsumptionType
 from aioaquarea.errors import DataNotAvailableError
 
@@ -228,6 +228,69 @@ AQUAREA_TANK_TARGET_TEMPERATURE_DESCRIPTION = AquareaSensorEntityDescription(
 )
 
 
+AQUAREA_OPERATION_STATUS_DESCRIPTION = AquareaSensorEntityDescription(
+    key="operation_status",
+    name="Operation Status",
+    icon="mdi:power",
+    entity_category=EntityCategory.DIAGNOSTIC,
+    device_class=SensorDeviceClass.ENUM,
+    options=[s.name.lower() for s in OperationStatus],
+    get_state=lambda device: device.operation_status.name.lower(),
+    is_available=lambda device: True,
+)
+
+AQUAREA_DEVICE_MODE_DESCRIPTION = AquareaSensorEntityDescription(
+    key="device_mode_status",
+    name="Device Mode",
+    icon="mdi:heat-pump-outline",
+    entity_category=EntityCategory.DIAGNOSTIC,
+    device_class=SensorDeviceClass.ENUM,
+    options=[s.name.lower() for s in DeviceModeStatus],
+    get_state=lambda device: device.device_mode_status.name.lower(),
+    is_available=lambda device: True,
+)
+
+AQUAREA_ERROR_CODE_DESCRIPTION = AquareaSensorEntityDescription(
+    key="error_code",
+    name="Error Code",
+    icon="mdi:alert-circle",
+    entity_category=EntityCategory.DIAGNOSTIC,
+    get_state=lambda device: device.current_error.error_code if device.current_error else "none",
+    is_available=lambda device: True,
+)
+
+AQUAREA_ERROR_MESSAGE_DESCRIPTION = AquareaSensorEntityDescription(
+    key="error_message",
+    name="Error Message",
+    icon="mdi:alert-circle-outline",
+    entity_category=EntityCategory.DIAGNOSTIC,
+    get_state=lambda device: device.current_error.error_message if device.current_error else "none",
+    is_available=lambda device: True,
+)
+
+AQUAREA_FORCE_DHW_STATUS_DESCRIPTION = AquareaSensorEntityDescription(
+    key="force_dhw_status",
+    name="Force Hot Water Status",
+    icon="mdi:water-boiler",
+    entity_category=EntityCategory.DIAGNOSTIC,
+    device_class=SensorDeviceClass.ENUM,
+    options=[s.name.lower() for s in ForceDHW],
+    get_state=lambda device: device.force_dhw.name.lower(),
+    is_available=lambda device: device.force_dhw is not None,
+)
+
+AQUAREA_FORCE_HEATER_STATUS_DESCRIPTION = AquareaSensorEntityDescription(
+    key="force_heater_status",
+    name="Force Heater Status",
+    icon="mdi:radiator",
+    entity_category=EntityCategory.DIAGNOSTIC,
+    device_class=SensorDeviceClass.ENUM,
+    options=[s.name.lower() for s in ForceHeater],
+    get_state=lambda device: device.force_heater.name.lower(),
+    is_available=lambda device: device.force_heater is not None,
+)
+
+
 def _get_consumption(device: AquareaDevice, consumption_type: ConsumptionType) -> float | None:
     try:
         return device.get_or_schedule_consumption(datetime.now(), consumption_type)
@@ -328,6 +391,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
         entities.append(AquareaSensorEntity(coordinator, AQUAREA_OUTSIDE_TEMPERATURE_DESCRIPTION))
         entities.append(AquareaSensorEntity(coordinator, AQUAREA_CURRENT_ACTION_DESCRIPTION))
         entities.append(AquareaSensorEntity(coordinator, AQUAREA_PUMP_DUTY_DESCRIPTION))
+        entities.append(AquareaSensorEntity(coordinator, AQUAREA_OPERATION_STATUS_DESCRIPTION))
+        entities.append(AquareaSensorEntity(coordinator, AQUAREA_DEVICE_MODE_DESCRIPTION))
+        entities.append(AquareaSensorEntity(coordinator, AQUAREA_ERROR_CODE_DESCRIPTION))
+        entities.append(AquareaSensorEntity(coordinator, AQUAREA_ERROR_MESSAGE_DESCRIPTION))
+        entities.append(AquareaSensorEntity(coordinator, AQUAREA_FORCE_DHW_STATUS_DESCRIPTION))
+        entities.append(AquareaSensorEntity(coordinator, AQUAREA_FORCE_HEATER_STATUS_DESCRIPTION))
         entities.append(AquareaSensorEntity(coordinator, AQUAREA_ENERGY_HEAT_DESCRIPTION))
         entities.append(AquareaSensorEntity(coordinator, AQUAREA_ENERGY_TANK_DESCRIPTION))
         entities.append(AquareaSensorEntity(coordinator, AQUAREA_ENERGY_TOTAL_DESCRIPTION))
