@@ -10,6 +10,7 @@ from homeassistant.util import dt as dt_util
 from aio_panasonic_comfort_cloud import ApiClient, PanasonicDevice, PanasonicDeviceInfo, PanasonicDeviceEnergy, ChangeRequestBuilder
 from aioaquarea import Client as AquareaApiClient, Device as AquareaDevice, AquareaEnvironment
 from aioaquarea.data import DeviceInfo as AquareaDeviceInfo
+from aioaquarea.errors import AuthenticationError as AquareaAuthError, RequestFailedError as AquareaRequestFailedError
 
 from .const import DOMAIN,MANUFACTURER, DEFAULT_DEVICE_FETCH_INTERVAL, CONF_DEVICE_FETCH_INTERVAL, CONF_ENERGY_FETCH_INTERVAL, DEFAULT_ENERGY_FETCH_INTERVAL
 
@@ -192,20 +193,35 @@ class AquareaDeviceCoordinator(DataUpdateCoordinator):
             sw_version=self.device.firmware_version,
         )
 
-    async def _fetch_device_data(self)->int:
+    async def _fetch_device_data(self) -> int:
         try:
-            if self._device is None:
-                self._device = await self._api_client.get_device(
-                    device_info=self._aquarea_device_info,
-                    consumption_refresh_interval=timedelta(seconds=self._config.get(CONF_ENERGY_FETCH_INTERVAL, DEFAULT_ENERGY_FETCH_INTERVAL)),
-                    timezone=dt_util.DEFAULT_TIME_ZONE)
-                
-                self._update_id = 1
-                return self._update_id
-            await self._device.refresh_data()
-            self._update_id = self._update_id + 1
-            return self._update_id
+            return await self._do_fetch()
+        except AquareaRequestFailedError as e:
+            # aioaquarea's device_manager catches AuthenticationError internally and re-raises
+            # as RequestFailedError, which the @auth_required decorator cannot intercept.
+            # Re-login and retry once when this is the root cause.
+            if isinstance(e.__cause__, AquareaAuthError):
+                _LOGGER.warning("Aquarea token expired during data fetch, re-logging in and retrying...")
+                await self._api_client.login()
+                try:
+                    return await self._do_fetch()
+                except BaseException as retry_e:
+                    _LOGGER.error("Aquarea data fetch failed after re-login: %s", retry_e)
+                    raise UpdateFailed(f"Invalid response from API: {retry_e}") from retry_e
+            _LOGGER.error("Error fetching Aquarea device data: %s", e)
+            raise UpdateFailed(f"Invalid response from API: {e}") from e
         except BaseException as e:
             _LOGGER.error("Error fetching device data from API: %s", e, exc_info=e)
             raise UpdateFailed(f"Invalid response from API: {e}") from e
+
+    async def _do_fetch(self) -> int:
+        if self._device is None:
+            self._device = await self._api_client.get_device(
+                device_info=self._aquarea_device_info,
+                consumption_refresh_interval=timedelta(seconds=self._config.get(CONF_ENERGY_FETCH_INTERVAL, DEFAULT_ENERGY_FETCH_INTERVAL)),
+                timezone=dt_util.DEFAULT_TIME_ZONE)
+            self._update_id = 1
+            return self._update_id
+        await self._device.refresh_data()
+        self._update_id = self._update_id + 1
         return self._update_id
